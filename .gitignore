@@ -1,0 +1,32 @@
+# ============================================================
+#  .gitignore  ·  AgroBot Pro
+#  Este archivo le dice a GitHub que NO debe subir.
+#  Se llama asi, empezando con punto y sin extension.
+# ============================================================
+
+# --- Credenciales de la base de datos ---
+# conexion.php lleva usuario y contrasena de MySQL.
+# En su lugar se sube conexion.ejemplo.php, sin datos reales.
+conexion.php
+
+# --- Comprimidos y respaldos ---
+*.zip
+*.rar
+*.bak
+*.old
+*_old.*
+*copia*
+
+# --- Basura de Windows ---
+Thumbs.db
+desktop.ini
+*.lnk
+
+# --- Configuracion del editor ---
+.vscode/
+.idea/
+
+# --- Archivos temporales ---
+*.log
+*.tmp
+~$*
