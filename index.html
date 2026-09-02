@@ -1,0 +1,523 @@
+agro.html<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgroBot Pro v17 · Frutas de El Salvador</title>
+<link rel="stylesheet" href="estilo.css">
+<style>
+/* ARREGLO v22 - centrado de la pantalla de registro.
+   No se toca "display": el juego lo controla con JavaScript. */
+#account-screen{
+  flex-direction:column !important;
+  align-items:center !important;
+  justify-content:flex-start !important;
+  overflow-y:auto !important;
+  overflow-x:hidden !important;
+  padding:70px 16px 40px 16px !important;
+}
+#account-screen > .account-box{
+  margin:auto !important;
+  flex:0 0 auto !important;
+  width:440px !important;
+  max-width:92vw !important;
+}
+#age-block-screen{
+  align-items:center !important;
+  justify-content:flex-start !important;
+  overflow-y:auto !important;
+  padding:40px 16px !important;
+}
+#account-screen::-webkit-scrollbar,
+#age-block-screen::-webkit-scrollbar{width:10px;}
+#account-screen::-webkit-scrollbar-track,
+#age-block-screen::-webkit-scrollbar-track{background:rgba(10,14,39,0.5);}
+#account-screen::-webkit-scrollbar-thumb,
+#age-block-screen::-webkit-scrollbar-thumb{background:#5ce1ff;border-radius:5px;}
+</style>
+</head>
+<body>
+<div id="game-container">
+<div id="account-screen">
+<div class="account-box">
+<div class="account-title">🌱 AGROBOT PRO</div>
+<div class="account-sub">Frutas de El Salvador · Sistema de Agricultura Inteligente v7.2</div>
+<div class="account-field">
+<label>👤 Tu Nombre</label>
+<input type="text" id="acc-name" placeholder="Ej: Carlos" maxlength="20" autocomplete="off">
+</div>
+<div class="account-field">
+<label>🎂 Tu Edad</label>
+<input type="number" id="acc-age" placeholder="Ej: 10" min="5" max="99" oninput="previewAgeMode()">
+<div class="field-hint" id="age-hint">🔞 Edad mínima para jugar: 14 años. Tu edad también elige tu misión y tus comandos.</div>
+</div>
+<div class="account-field">
+<label>🤖 Elige tu Avatar</label>
+<div class="avatar-picker" id="avatar-picker">
+<div class="avatar-opt selected" data-avatar="🧑‍🌾">🧑‍🌾</div>
+<div class="avatar-opt" data-avatar="👩‍🌾">👩‍🌾</div>
+<div class="avatar-opt" data-avatar="🧑‍🔬">🧑‍🔬</div>
+<div class="avatar-opt" data-avatar="👨‍💻">👨‍💻</div>
+<div class="avatar-opt" data-avatar="🤖">🤖</div>
+<div class="avatar-opt" data-avatar="🦸">🦸</div>
+</div>
+<div class="avatar-photo-row">
+<div class="avatar-photo-prev" id="photo-prev">📷</div>
+<div style="flex:1;min-width:0">
+<button class="mini-btn" onclick="document.getElementById('photo-input').click()">Subir foto</button>
+<button class="mini-btn ghost" id="photo-clear" onclick="clearPhoto()" style="display:none">Quitar</button>
+<div class="field-hint">Opcional. La foto se guarda solo en este dispositivo y no se envía a ningún servidor.</div>
+</div>
+<input type="file" id="photo-input" accept="image/*" style="display:none" onchange="handlePhotoUpload(event)">
+</div>
+</div>
+<button class="account-btn" onclick="createAccount()">▶ CREAR CUENTA Y COMENZAR</button>
+<div class="account-welcome">¿Ya tienes cuenta? <span onclick="loadAccount()">Inicia sesión</span></div>
+</div>
+</div>
+
+<div id="age-block-screen">
+<div class="block-box">
+<div class="block-icon">🚫</div>
+<div class="block-title">ACCESO NO PERMITIDO</div>
+<div class="block-sub">AGROBOT PRO · EDAD MÍNIMA 14 AÑOS</div>
+<div class="block-age" id="block-age-txt">Edad registrada: —</div>
+<div class="block-text">No puedes ingresar al juego porque todavía no cumples la edad mínima. AgroBot Pro está diseñado para jugadores de <b>14 años en adelante</b>.</div>
+<ul class="block-list">
+<li>El juego usa un editor de programación real (variables, bucles y funciones) pensado para nivel de bachillerato.</li>
+<li>Incluye un asistente de inteligencia artificial con chat y micrófono, y las reglas de estas herramientas piden 14 años como mínimo.</li>
+<li>Las misiones de emergencia, los drones enemigos y las decisiones del mundo destruido son contenido para jugadores mayores.</li>
+<li>Para jugar se guarda un perfil con nombre, edad y foto opcional, y eso requiere la edad mínima permitida.</li>
+</ul>
+<div class="block-text">Si te equivocaste al escribir tu edad, vuelve atrás y corrígela. Si aún no tienes 14 años, espera a cumplirlos o pide a un adulto responsable que te acompañe.</div>
+<button class="block-btn" onclick="volverDeBloqueo()">◀ Volver y corregir mi edad</button>
+<div class="block-foot">Esta restricción se aplica también al botón ▶ EJECUTAR del editor.</div>
+</div>
+</div>
+
+<div id="intro">
+<canvas id="stars-canvas"></canvas>
+<button class="audio-toggle" id="audio-toggle" onclick="toggleIntroAudio()">🔊 AUDIO ON</button>
+<div class="cinematic-layer" id="cin-scene-1">
+<div class="cin-scene">
+<div class="cin-logo">AGROBOT PRO</div>
+<div class="cin-tagline">Frutas de El Salvador · v7.2</div>
+</div>
+</div>
+<div class="cinematic-layer" id="cin-scene-2">
+<div class="cin-scene">
+<div class="cin-avatar-big" id="cin-avatar">🧑‍🌾</div>
+<div class="cin-welcome" id="cin-welcome">¡Bienvenido, Agricultor!</div>
+</div>
+</div>
+<div class="cinematic-layer" id="cin-scene-3">
+<div class="cin-scene">
+<div class="globe-container">
+<canvas id="globe-canvas" width="260" height="260"></canvas>
+<div class="scan-line"></div>
+</div>
+<div class="cin-text">
+Las <span class="highlight">frutas tropicales</span> de El Salvador necesitan tu cuidado.<br>
+Tú eres el <span class="highlight">último agricultor inteligente</span>.
+</div>
+</div>
+</div>
+<div class="cinematic-layer" id="cin-scene-4">
+<div class="cin-scene">
+<div class="cin-text">
+🌱 Tú eliges qué sembrar: <span class="highlight">20 frutas salvadoreñas</span>, sin repetir<br>
+💻 Eres el <span class="highlight">programador</span> del dron que las riega<br>
+🪙 Ganas <span class="highlight">monedas</span> por cada planta que salves<br>
+🪙 Las monedas se gastan en la <span class="highlight">tienda</span>: semillas, agua y pistas
+</div>
+</div>
+</div>
+<div class="cinematic-layer" id="cin-scene-5">
+<div class="cin-scene">
+<div class="cin-text" style="margin-bottom:20px;">INICIALIZANDO SISTEMAS...</div>
+<div class="cin-counter" id="intro-counter">5</div>
+<div class="loading-bar"><div class="loading-fill" id="loading-fill"></div></div>
+</div>
+</div>
+<div class="cin-progress" id="cin-progress">ESCENA 1/5</div>
+<div class="cin-skip" onclick="skipIntro()">SALTAR ▶▶</div>
+</div>
+
+<div id="main-menu">
+<canvas id="menu-canvas"></canvas>
+<div class="menu-user">
+<div class="menu-user-avatar" id="menu-avatar">🧑‍🌾</div>
+<div class="menu-user-info">
+<div class="menu-user-name" id="menu-name">Agricultor</div>
+<div class="menu-user-stats" id="menu-stats">Nivel 1 · 0 pts</div>
+</div>
+</div>
+<div class="menu-content">
+<div class="menu-logo">AGROBOT PRO</div>
+<div class="menu-tagline">Frutas de El Salvador · Aprende a programar</div>
+<button class="menu-btn btn-level1" onclick="openSowScreen(1)">🥭 NIVEL 1: Frutas Clásicas</button>
+<div class="level-info">Jocote, Mango, Marañón, Mamón, Zapote, Anona, Papaya, Coco, Guayaba, Nance</div>
+<button class="menu-btn btn-level2" onclick="openSowScreen(2)">🐉 NIVEL 2: Frutas Exóticas</button>
+<div class="level-info">Guanábana, Caimito, Copinol, Paterna, Cincuya, Tamarindo, Arrayán, Mamey, Maracuyá, Pitaya</div>
+<button class="menu-btn btn-manual" onclick="openManual()">📘 MANUAL</button>
+<button class="menu-btn btn-logout" onclick="logoutAccount()">🚪 CERRAR SESIÓN</button>
+</div>
+<div class="menu-version">AGROBOT PRO v17 · AIDEN te cede la palabra</div>
+</div>
+
+<div id="manual-popup">
+<div class="manual-box">
+<div class="manual-header">
+<span class="manual-title">📘 MANUAL DE OPERACIONES</span>
+<button class="close-btn" onclick="closeManual()">✕</button>
+</div>
+<div class="manual-tabs">
+<div class="m-tab active" onclick="switchManualTab('controles',this)">Controles</div>
+<div class="m-tab" onclick="switchManualTab('nivel1',this)">Nivel 1</div>
+<div class="m-tab" onclick="switchManualTab('nivel2',this)">Nivel 2</div>
+<div class="m-tab" onclick="switchManualTab('api',this)">Comandos</div>
+</div>
+<div class="manual-body">
+<div id="manual-controles" class="m-tab-panel">
+<div class="m-section">
+<h3>Movimiento del Dron</h3>
+<div class="cmd-grid">
+<div class="cmd-item"><div class="cmd-key">W / ↑</div><div class="cmd-desc">Mover arriba</div></div>
+<div class="cmd-item"><div class="cmd-key">S / ↓</div><div class="cmd-desc">Mover abajo</div></div>
+<div class="cmd-item"><div class="cmd-key">A / ←</div><div class="cmd-desc">Mover izquierda</div></div>
+<div class="cmd-item"><div class="cmd-key">D / →</div><div class="cmd-desc">Mover derecha</div></div>
+</div>
+</div>
+<div class="m-section">
+<h3>Acciones</h3>
+<div class="cmd-grid">
+<div class="cmd-item"><div class="cmd-key">E</div><div class="cmd-desc">Hace lo que toca: recargar, comprar, plantar o regar</div></div>
+<div class="cmd-item"><div class="cmd-key">B</div><div class="cmd-desc">Comprar maceta (15 🪙)</div></div>
+<div class="cmd-item"><div class="cmd-key">R</div><div class="cmd-desc">Comprar planta y elegir la fruta (10 🪙)</div></div>
+<div class="cmd-item"><div class="cmd-key">ESC</div><div class="cmd-desc">Pausa</div></div>
+</div>
+</div>
+<div class="m-section">
+<h3>🪙 ¿Para qué sirven las monedas?</h3>
+<p>Ganas <b>2 monedas</b> cada vez que riegas y <b>10 monedas</b> cada vez que <b>salvas</b> una planta que estaba a punto de morir. Completar tu misión te da <b>25</b>.</p>
+<p>Al empezar cada partida se te regala un <b>10% extra</b> de las monedas que ya tenías (la primera vez, 50 de regalo).</p>
+<p>Se gastan en la tienda, que abres con <code>ESC</code>:</p>
+<div class="cmd-grid">
+<div class="cmd-item"><div class="cmd-key">🌱 5 monedas</div><div class="cmd-desc">Sembrar una fruta nueva en tierra vacía</div></div>
+<div class="cmd-item"><div class="cmd-key">💧 3 monedas</div><div class="cmd-desc">Llenar la cubeta sin volver al depósito</div></div>
+<div class="cmd-item"><div class="cmd-key">💡 2 monedas</div><div class="cmd-desc">Pista de AIDEN: qué planta atender primero</div></div>
+<div class="cmd-item"><div class="cmd-key">🌿 8 monedas</div><div class="cmd-desc">Fertilizante: +1 de salud a todo el huerto</div></div>
+</div>
+</div>
+<div class="m-section">
+<h3>Sistema de Riego Real</h3>
+<p>🎙️ Habla con AIDEN: di <b>"AIDEN"</b> y luego tu pregunta. El micrófono queda encendido todo el juego.</p>
+<p>🪙 Al iniciar sesión te regalamos 50 monedas.</p>
+<p>🪴 Compra la maceta (B, 15 🪙) y luego la planta (R, 10 🪙). Empiezas con 2 macetas de 20.</p>
+<p>⏰ Las frutas necesitan riego cada hora (tiempo real)</p>
+<p>💧 Después de 1 hora sin regar, la salud comienza a decaer</p>
+<p>📖 Al regar, AIDEN te contará la biografía de cada fruta</p>
+</div>
+</div>
+<div id="manual-nivel1" class="m-tab-panel" style="display:none">
+<div class="m-section">
+<h3>🥭 Nivel 1: Frutas Clásicas de El Salvador</h3>
+<div class="plant-grid" id="manual-grid-l1"></div>
+</div>
+</div>
+<div id="manual-nivel2" class="m-tab-panel" style="display:none">
+<div class="m-section">
+<h3>🐉 Nivel 2: Frutas Exóticas y Tradicionales</h3>
+<div class="plant-grid" id="manual-grid-l2"></div>
+</div>
+</div>
+<div id="manual-api" class="m-tab-panel" style="display:none">
+<div class="m-section">
+<h3>Órdenes del dron</h3>
+<p><code>drone.ir_a(x, y)</code> — Volar directo a una casilla</p>
+<p><code>drone.arriba(n)</code> / <code>drone.abajo(n)</code> — Avanzar n casillas vertical</p>
+<p><code>drone.izquierda(n)</code> / <code>drone.derecha(n)</code> — Avanzar n casillas horizontal</p>
+<p><code>drone.recoger_cubeta()</code> — Llenar la cubeta en el depósito (0,0)</p>
+<p><code>drone.regar()</code> — Regar la fruta de la casilla actual</p>
+<p><code>drone.comprar_maceta()</code> — Comprar la maceta del lugar donde está el dron (15 🪙)</p>
+<p><code>drone.sembrar("mango")</code> — Plantar esa fruta en la maceta vacía (10 🪙)</p>
+</div>
+<div class="m-section">
+<h3>Preguntas a la granja</h3>
+<p><code>granja.criticas()</code> — Casillas de plantas en peligro [(x,y),...]</p>
+<p><code>granja.salud(x, y)</code> — Salud de esa casilla (0 a 5)</p>
+<p><code>granja.info(x, y)</code> — Todos los datos de esa planta</p>
+<p><code>granja.tiempo_sin_riego(x, y)</code> — Minutos desde el último riego</p>
+<p><code>granja.nivel_cubeta()</code> — Agua que le queda al dron</p>
+<p><code>granja.vacias()</code> — Macetas que todavía no tienen planta</p>
+<p><code>granja.bloqueadas()</code> — Lugares donde falta comprar la maceta</p>
+<p><code>granja.macetas()</code> — Cuántas macetas tienes de las 20</p>
+<p><code>granja.disponibles()</code> — Nombres de las frutas que aún puedes comprar</p>
+<p><code>granja.monedas()</code> — Monedas que tienes ahora</p>
+</div>
+<div class="m-section">
+<h3>Estructuras que entiende el editor</h3>
+<p><code>for x, y in granja.criticas():</code> — repetir para cada casilla</p>
+<p><code>if granja.salud(2,1) &lt; 2:</code> — decidir según una condición</p>
+<p><code>print(...)</code> — escribir en la consola</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+<div id="sow-screen">
+<div class="sow-head">
+<div>
+<div class="sow-title">🌱 ¿Qué dos frutos quieres sembrar primero?</div>
+<div class="sow-sub" id="sow-sub">Empiezas con <b>2 macetas</b>, así que elige 2 frutas. Las otras 18 macetas están cerradas: las vas <b>comprando con monedas</b> mientras juegas (maceta 15 🪙 + planta 10 🪙). Cada fruta se siembra <b>una sola vez</b>: nunca se repiten.</div>
+</div>
+<div class="sow-count" id="sow-count">0 / 20</div>
+</div>
+<div class="sow-grid" id="sow-grid"></div>
+<div class="sow-actions">
+<button class="menu-btn btn-level1" onclick="sowPreset('nivel')">Las 2 de este nivel</button>
+<button class="menu-btn btn-level2" onclick="sowPreset('todas')">Sorpréndeme</button>
+<button class="menu-btn btn-logout" onclick="sowPreset('ninguna')">Limpiar</button>
+<button class="menu-btn btn-manual" onclick="confirmSow()">▶ Sembrar y empezar</button>
+<button class="menu-btn btn-replay" onclick="cancelSow()">↩ Volver</button>
+</div>
+</div>
+
+<div id="picker-popup" onclick="if(event.target===this) cerrarSelectorPlanta()">
+<div class="picker-box">
+<button class="bio-close" onclick="cerrarSelectorPlanta()">✕</button>
+<div class="shop-title">🌱 Elige qué fruta plantar</div>
+<div class="shop-sub" id="picker-info"></div>
+<div class="sow-grid picker-grid" id="picker-grid"></div>
+</div>
+</div>
+
+<div id="shop-popup">
+<div class="shop-box">
+<button class="bio-close" onclick="closeShop()">✕</button>
+<div class="shop-title">🪙 Tienda del huerto</div>
+<div class="shop-sub"><b>¿Para qué sirven las monedas?</b> Para hacer crecer tu huerto: cada maceta nueva y cada planta se compran. Empiezas con 50 de regalo, ganas 2 por cada riego y 10 cada vez que <b>salvas</b> una planta en peligro. Tienes <b id="shop-coins">0</b> monedas.</div>
+<div class="shop-item">
+<div class="si-emoji">🪴</div>
+<div class="si-info"><div class="si-name">Maceta nueva</div><div class="si-desc">Abre el lugar donde está el dron. También con la tecla B.</div></div>
+<button class="shop-buy" onclick="buyItem('maceta')">15 🪙</button>
+</div>
+<div class="shop-item">
+<div class="si-emoji">🌱</div>
+<div class="si-info"><div class="si-name">Planta</div><div class="si-desc">Elige qué fruta va en la maceta donde está el dron. También con R.</div></div>
+<button class="shop-buy" onclick="buyItem('planta')">10 🪙</button>
+</div>
+<div class="shop-item">
+<div class="si-emoji">🌿</div>
+<div class="si-info"><div class="si-name">Fertilizante</div><div class="si-desc">Sube +1 de salud a todas las plantas del huerto de golpe.</div></div>
+<button class="shop-buy" onclick="buyItem('fertilizante')">8 🪙</button>
+</div>
+<div class="shop-item">
+<div class="si-emoji">💧</div>
+<div class="si-info"><div class="si-name">Recarga a distancia</div><div class="si-desc">Llena la cubeta sin volver al depósito.</div></div>
+<button class="shop-buy" onclick="buyItem('agua')">3 🪙</button>
+</div>
+<div class="shop-item">
+<div class="si-emoji">💡</div>
+<div class="si-info"><div class="si-name">Pista de AIDEN</div><div class="si-desc">AIDEN te dice qué planta atender primero y cómo.</div></div>
+<button class="shop-buy" onclick="buyItem('pista')">2 🪙</button>
+</div>
+</div>
+</div>
+
+<div id="game-screen">
+<canvas id="farm-canvas"></canvas>
+<div class="hud-top">
+<div class="hud-item"><span class="hud-label">NIVEL</span><span class="hud-val hud-level" id="hud-level">1</span></div>
+<div class="hud-sep"></div>
+<div class="hud-item"><span class="hud-label">POS</span><span class="hud-val" id="hud-pos">(0,0)</span></div>
+<div class="hud-sep"></div>
+<div class="hud-item"><span class="hud-label">💧</span><span class="hud-val" id="hud-water">10/10</span></div>
+<div class="hud-sep"></div>
+<div class="hud-item"><span class="hud-label">SALUD</span><span class="hud-val" id="hud-health">5.0</span></div>
+<div class="hud-sep"></div>
+<div class="hud-item"><span class="hud-label">CRÍTICAS</span><span class="hud-val hud-critical" id="hud-critical">0</span></div>
+<div class="hud-sep"></div>
+<div class="hud-item"><span class="hud-label">PTS</span><span class="hud-val" id="hud-score">0</span></div>
+<div class="hud-sep"></div>
+<div class="hud-item"><span class="hud-label">🪙</span><span class="hud-val hud-coins" id="hud-coins">0</span></div>
+<div class="hud-sep"></div>
+<div class="hud-item"><span class="hud-label">🪴</span><span class="hud-val" id="hud-seeds">0/20</span></div>
+<div class="hud-sep"></div>
+<div class="hud-item"><span class="hud-label">HORA</span><span class="hud-val" id="hud-time">00:00</span></div>
+</div>
+<div id="plant-info"></div>
+<div id="mic-badge"><span class="mic-dot on"></span><span id="mic-badge-text">Di "AIDEN"</span></div>
+<div id="mission-box">
+<div class="mission-label">Misión · <span id="mission-mode">Explorador</span></div>
+<div class="mission-text" id="mission-text">—</div>
+<div class="mission-bar"><div class="mission-fill" id="mission-fill"></div></div>
+</div>
+<div class="control-panel">
+<div class="panel-tabs">
+<div class="panel-tab active" onclick="switchTab('code',this)">💻 Programador</div>
+<div class="panel-tab" onclick="switchTab('aiden',this)">🤖 AIDEN</div>
+</div>
+<div id="tab-code" class="tab-content active">
+<div class="code-editor-wrap">
+<div class="code-label">Mi programa</div>
+<textarea id="python-editor" placeholder="# Escribe aquí las órdenes de tu dron
+# Ejemplo:
+drone.ir_a(0, 0)
+drone.recoger_cubeta()
+criticas = granja.criticas()
+for x, y in criticas:
+    drone.ir_a(x, y)
+    drone.regar()"></textarea>
+<div class="code-actions">
+<button class="code-btn btn-run" onclick="runCode()">▶ EJECUTAR</button>
+<button class="code-btn btn-clear" onclick="clearCode()">✕ LIMPIAR</button>
+</div>
+<div class="console-out" id="console-out"></div>
+<div class="quick-cmds" id="quick-cmds">
+<div class="code-label" style="margin-bottom:6px;">Comandos Rápidos</div>
+</div>
+</div>
+</div>
+<div id="tab-aiden" class="tab-content">
+<div class="aiden-wrap">
+<div class="aiden-avatar">
+<div class="aiden-orb"></div>
+<div class="aiden-info" style="flex:1">
+<div class="aiden-head-row">
+<h3>AIDEN</h3>
+<button class="aiden-clear" onclick="limpiarChat()">Borrar chat</button>
+</div>
+<div class="aiden-status" id="aiden-status">⚪ Probando la conexión…</div>
+</div>
+</div>
+<div class="aiden-thread" id="aiden-thread"></div>
+<div class="mic-row">
+<div class="mic-dot" id="mic-dot"></div>
+<div class="mic-text" id="mic-text">Micrófono siempre encendido · háblame cuando quieras</div>
+<button class="mic-btn" id="mic-btn" onclick="toggleMicrofono()">Activar</button>
+</div>
+<div class="aiden-topics" id="aiden-topics"></div>
+<div class="aiden-stats">
+<div class="stat-item"><div class="stat-label">Regadas</div><div class="stat-val" id="stat-watered">0</div></div>
+<div class="stat-item"><div class="stat-label">Líneas</div><div class="stat-val" id="stat-lines">0</div></div>
+<div class="stat-item"><div class="stat-label">Rescates</div><div class="stat-val" id="stat-rescues">0</div></div>
+<div class="stat-item"><div class="stat-label">Eficiencia</div><div class="stat-val" id="stat-efficiency">100%</div></div>
+</div>
+<div class="aiden-chat-input" style="display: flex; gap: 8px; margin-top: 5px;">
+    <input type="text" id="aiden-input" placeholder="Pregúntale a AIDEN..." autocomplete="off" onkeypress="if(event.key === 'Enter') askAiden()" style="flex: 1; min-width:0; padding: 8px; background: rgba(0,0,0,0.5); border: 1px solid var(--border); color: var(--white); border-radius: 4px; font-family: var(--font-ui); font-size: 0.8rem; outline: none; transition: border-color 0.3s;">
+    <button class="topic-btn" onclick="askAiden()" style="background: rgba(92,225,255,0.18); border-color: var(--cyan); color: var(--cyan); padding: 8px 12px; font-weight: bold;">Enviar</button>
+</div>
+<div class="voice-row">
+<button class="voice-btn" id="voice-btn" onclick="toggleVoice()" style="flex:0 0 auto">🔊 VOZ ON</button>
+<select class="voice-select" id="voice-select" onchange="setVoice(this.value)"><option value="">Voz automática</option></select>
+</div>
+</div>
+</div>
+</div>
+<div id="vkb" class="visible">
+<div class="vkb-row">
+<div class="vk-spacer"></div>
+<button class="vk vk-up" id="vk-w" onpointerdown="vkPress('w')" onpointerup="vkRelease('w')" onpointerleave="vkRelease('w')">
+<span>&#x2191;</span><span class="vk-label">W</span>
+</button>
+<div class="vk-spacer"></div>
+<button class="vk vk-action vk-e" id="vk-e" onpointerdown="vkPress('e')" onpointerup="vkRelease('e')" onpointerleave="vkRelease('e')">
+<span>&#x1F4A7;</span><span class="vk-label">E - Regar</span>
+</button>
+<button class="vk vk-action vk-r" id="vk-r" onpointerdown="vkPress('r')" onpointerup="vkRelease('r')" onpointerleave="vkRelease('r')">
+<span>&#x1F331;</span><span class="vk-label">R - Planta</span>
+</button>
+<button class="vk vk-action vk-b" id="vk-b" onpointerdown="vkPress('b')" onpointerup="vkRelease('b')" onpointerleave="vkRelease('b')">
+<span>&#x1FAB4;</span><span class="vk-label">B - Maceta</span>
+</button>
+</div>
+<div class="vkb-row">
+<button class="vk vk-left" id="vk-a" onpointerdown="vkPress('a')" onpointerup="vkRelease('a')" onpointerleave="vkRelease('a')">
+<span>&#x2190;</span><span class="vk-label">A</span>
+</button>
+<button class="vk vk-down" id="vk-s" onpointerdown="vkPress('s')" onpointerup="vkRelease('s')" onpointerleave="vkRelease('s')">
+<span>&#x2193;</span><span class="vk-label">S</span>
+</button>
+<button class="vk vk-right" id="vk-d" onpointerdown="vkPress('d')" onpointerup="vkRelease('d')" onpointerleave="vkRelease('d')">
+<span>&#x2192;</span><span class="vk-label">D</span>
+</button>
+<button class="vk vk-action vk-esc" id="vk-esc" onpointerdown="vkPress('Escape')" onpointerup="vkRelease('Escape')" onpointerleave="vkRelease('Escape')">
+<span>&#x23F8;</span><span class="vk-label">ESC</span>
+</button>
+</div>
+</div>
+<button class="vkb-toggle" id="vkb-toggle" onclick="toggleVKB()">&#x2328;</button>
+<div id="pause-overlay">
+<div class="pause-box">
+<div class="pause-title">PAUSA</div>
+<button class="pause-btn" onclick="resumeGame()">▶ Continuar</button>
+<button class="pause-btn" onclick="openShop()">🪙 Tienda</button>
+<button class="pause-btn" onclick="goToMenu()">⌂ Menú Principal</button>
+</div>
+</div>
+</div>
+
+<div id="bio-popup" onclick="if(event.target===this) closeBio()">
+<div class="bio-box">
+<button class="bio-close" onclick="closeBio()">✕</button>
+<div class="bio-header">
+<div>
+<div class="foto-fruta bio-photo" id="bio-photo"><span class="foto-emoji">🥭</span></div>
+<div class="bio-photo-credit">Foto: Wikipedia</div>
+</div>
+<div class="bio-title-area">
+<div class="bio-title" id="bio-title">Mango</div>
+<div class="bio-scientific" id="bio-scientific">Mangifera indica</div>
+<div class="bio-origin" id="bio-origin">🌍 Origen: El Salvador</div>
+</div>
+</div>
+<div class="bio-body" id="bio-body">Cargando información...</div>
+<div class="bio-facts" id="bio-facts"></div>
+<div class="bio-close-hint">Pulsa E o ESC para cerrar</div>
+<div class="bio-voice-indicator" id="bio-voice-indicator" style="display:none;">
+<div class="voice-wave"><span></span><span></span><span></span><span></span><span></span></div>
+<span>AIDEN está hablando...</span>
+</div>
+</div>
+</div>
+
+<div id="mx-res">
+<div class="mx-chip">⚡<b id="mx-energia">0</b></div>
+<div class="mx-chip">🔩<b id="mx-piezas">0</b></div>
+<div class="mx-chip">🍲<b id="mx-alimento">0</b></div>
+<div class="mx-chip">💧<b id="mx-agua">0</b></div>
+<div class="mx-chip eco">🌍<b id="mx-eco">50</b>%</div>
+<div class="mx-chip rep">⭐<b id="mx-rep">0</b></div>
+<div class="mx-chip">🤖<b id="mx-auto">OFF</b></div>
+</div>
+<div id="mx-alert" onclick="MX.reintentarPuzzle()">
+<div class="mx-al-t" id="mx-al-t">—</div>
+<div class="mx-al-s" id="mx-al-s">—</div>
+<div class="mx-al-bar"><div class="mx-al-fill" id="mx-al-fill"></div></div>
+</div>
+<div id="mx-dock">
+<button class="mx-dbtn" onclick="MX.abrir('zonas')" title="Mapa del mundo (M)">🌎<span>MUNDO</span></button>
+<button class="mx-dbtn" onclick="MX.abrir('taller')" title="Taller del dron (T)">🔧<span>TALLER</span></button>
+<button class="mx-dbtn" onclick="MX.abrir('base')" title="Construcción (V)">🏗️<span>BASE</span></button>
+<button class="mx-dbtn" onclick="MX.abrir('lab')" title="Laboratorio (I)">🧬<span>LAB</span></button>
+<button class="mx-dbtn" onclick="MX.abrir('comunidades')" title="Comunidades (C)">🤝<span>GENTE</span></button>
+<button class="mx-dbtn" onclick="MX.abrir('logros')" title="Logros y ranking (L)">🏆<span>LOGROS</span></button>
+<button class="mx-dbtn" onclick="MX.toggleAuto()" title="IA del dron (espacio)">🤖<span>IA</span></button>
+</div>
+<div id="mx-popup" onclick="if(event.target===this) MX.cerrar()">
+<div class="mx-box">
+<div class="mx-head"><h3 id="mx-title">Mundo</h3><button class="mx-close" onclick="MX.cerrar()">✕</button></div>
+<div id="mx-body"></div>
+</div>
+</div>
+
+<div id="toast"></div>
+</div>
+
+<script src="api.js"></script>
+<script src="juego.js"></script>
+<script src="db.js"></script>
+</body>
+</html>
