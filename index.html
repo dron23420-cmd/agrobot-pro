@@ -125,7 +125,7 @@ Tú eres el <span class="highlight">último agricultor inteligente</span>.
 <div class="cinematic-layer" id="cin-scene-4">
 <div class="cin-scene">
 <div class="cin-text">
-🌱 Tú eliges qué sembrar: <span class="highlight">20 frutas salvadoreñas</span>, sin repetir<br>
+🌱 Tú eliges qué sembrar: <span class="highlight">20 frutas salvadoreñas</span> distintas<br>
 💻 Eres el <span class="highlight">programador</span> del dron que las riega<br>
 🪙 Ganas <span class="highlight">monedas</span> por cada planta que salves<br>
 🪙 Las monedas se gastan en la <span class="highlight">tienda</span>: semillas, agua y pistas
@@ -155,6 +155,7 @@ Tú eres el <span class="highlight">último agricultor inteligente</span>.
 <div class="menu-content">
 <div class="menu-logo">AGROBOT PRO</div>
 <div class="menu-tagline">Frutas de El Salvador · Aprende a programar</div>
+<button class="menu-btn btn-continuar" id="btn-continuar" style="display:none" onclick="continuarPartida()">▶ CONTINUAR PARTIDA</button>
 <button class="menu-btn btn-level1" onclick="openSowScreen(1)">🥭 NIVEL 1: Frutas Clásicas</button>
 <div class="level-info">Jocote, Mango, Marañón, Mamón, Zapote, Anona, Papaya, Coco, Guayaba, Nance</div>
 <button class="menu-btn btn-level2" onclick="openSowScreen(2)">🐉 NIVEL 2: Frutas Exóticas</button>
@@ -270,7 +271,7 @@ Tú eres el <span class="highlight">último agricultor inteligente</span>.
 <div class="sow-head">
 <div>
 <div class="sow-title">🌱 ¿Qué dos frutos quieres sembrar primero?</div>
-<div class="sow-sub" id="sow-sub">Empiezas con <b>2 macetas</b>, así que elige 2 frutas. Las otras 18 macetas están cerradas: las vas <b>comprando con monedas</b> mientras juegas (maceta 15 🪙 + planta 10 🪙). Cada fruta se siembra <b>una sola vez</b>: nunca se repiten.</div>
+<div class="sow-sub" id="sow-sub">Empiezas con <b>2 macetas</b>, así que elige 2 frutas. Las otras 18 macetas están cerradas: las vas <b>comprando con monedas</b> mientras juegas (maceta 15 🪙 + planta 10 🪙). Una vez sembradas las 10 del nivel, puedes <b>repetir</b> la que quieras.</div>
 </div>
 <div class="sow-count" id="sow-count">0 / 20</div>
 </div>
