@@ -182,6 +182,7 @@ pitaya:{nombre:'Pitaya',cientifico:'Hylocereus undatus',origen:'América Central
 //  USER MEMORY
 // ============================================================
 const STORAGE_KEY = 'agrobot_user_data';
+const PARTIDA_KEY = 'agrobot_partida_v1';
 function getUserData() { try { const d = localStorage.getItem(STORAGE_KEY); return d ? JSON.parse(d) : null; } catch(e) { return null; } }
 function saveUserData(d) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); return true; } catch(e) { return false; } }
 let currentUser = null;
@@ -288,10 +289,12 @@ let voiceEnabled = true, speechSynth = window.speechSynthesis;   // v13: la voz 
 let gamePausedForBio = false;
 let farmGrid = [];
 let drone = { x: 0, y: 0, px: 0, py: 0, tx: 0, ty: 0, moving: false, bucket: 10, maxBucket: 10, rotorAngle: 0, waterEffect: [], blinkLed: 0, hoverOffset: 0 };
+let floatingTexts = []; // popups tipo "+10🪙" que suben y se desvanecen sobre el huerto
 let cmdQueue = [];
 let cmdRunning = false;
 let coins = 0;
 let semillas = [];
+let semillasAgotadasAvisado = false;
 let seleccionSiembra = [];
 let mision = null;
 let pendingPhoto = null;
@@ -661,6 +664,8 @@ pintarAvatarEn('menu-avatar');
 const modo = getAgeMode(currentUser.age);
 document.getElementById('menu-name').textContent = currentUser.name;
 document.getElementById('menu-stats').textContent = `${modo.emoji} ${modo.nombre} · ${currentUser.totalScore} pts · ${currentUser.coins || 0} 🪙`;
+const btnContinuar = document.getElementById('btn-continuar');
+if (btnContinuar) btnContinuar.style.display = hayPartidaGuardada() ? 'block' : 'none';
 }
 
 // ============================================================
@@ -1055,11 +1060,18 @@ if (health < 3) return 3;
 if (health < 4) return 4;
 return 5;
 }
+// Guarda la etapa anterior y cuando cambió, para que el dibujo pueda
+// mezclar las dos etapas un momento en vez de saltar de golpe.
+function actualizarEtapaCelda(c) {
+const nueva = getGrowthStage(c.health);
+if (nueva !== c.stage) { c.prevStage = c.stage; c.stageChangedAt = Date.now(); }
+c.stage = nueva;
+}
 
 // ============================================================
 //  DIBUJO DE PLANTAS ULTRA REALISTAS
 // ============================================================
-function drawRealisticPlant(ctx, type, x, y, size, health) {
+function drawRealisticPlant(ctx, type, x, y, size, health, cell) {
 const s = size / 40;
 const hf = health / 5;
 const stage = getGrowthStage(health);
@@ -1071,11 +1083,24 @@ ctx.beginPath();
 ctx.ellipse(0, size * 0.38, size * 0.32, size * 0.09, 0, 0, Math.PI * 2);
 ctx.fill();
 
-if (stage === 1) drawSprout(ctx, s, hf, type);
-else if (stage === 2) drawSeedling(ctx, s, hf, type);
-else if (stage === 3) drawGrowingPlant(ctx, s, hf, type);
-else if (stage === 4) drawFloweringPlant(ctx, s, hf, type);
+function pintarEtapa(n) {
+if (n === 1) drawSprout(ctx, s, hf, type);
+else if (n === 2) drawSeedling(ctx, s, hf, type);
+else if (n === 3) drawGrowingPlant(ctx, s, hf, type);
+else if (n === 4) drawFloweringPlant(ctx, s, hf, type);
 else drawMaturePlant(ctx, s, hf, type);
+}
+// si la etapa acaba de cambiar, mezclamos la anterior y la nueva ~500ms
+// en vez de saltar de golpe (se ve más suave al crecer o al marchitarse)
+const BLEND_MS = 500;
+const t = (cell && cell.stageChangedAt) ? Date.now() - cell.stageChangedAt : BLEND_MS;
+if (cell && cell.prevStage && cell.prevStage !== stage && t < BLEND_MS) {
+const a = t / BLEND_MS;
+ctx.save(); ctx.globalAlpha = 1 - a; pintarEtapa(cell.prevStage); ctx.restore();
+ctx.save(); ctx.globalAlpha = a; pintarEtapa(stage); ctx.restore();
+} else {
+pintarEtapa(stage);
+}
 
 ctx.restore();
 }
@@ -1840,15 +1865,15 @@ nance:['Byrsonima crassifolia', 'Nance'],
 guanabana:['Annona muricata', 'Guanábana'],
 caimito:['Chrysophyllum cainito', 'Caimito'],
 copinol:['Sterculia apetala', 'Copinol'],
-paterna:['Inga paterno', 'Paterna'],
+paterna:['Inga paterno', 'Enterolobium cyclocarpum'], // OJO: revisar cual especie es la correcta para "paterna" en El Salvador. Se prueban 2 nombres cientificos pero nunca la palabra suelta 'Paterna', que en Wikipedia es un municipio de Valencia, España (mostraba esa foto en vez de una fruta)
 cincuya:['Annona diversifolia', 'Cincuya'],
 tamarindo:['Tamarindus indica', 'Tamarindo'],
-arrayan:['Eugenia', 'Arrayán'],
+arrayan:['Eugenia stahlii', 'Arrayán'],
 mamey:['Pouteria sapota', 'Mamey'],
 maracuya:['Passiflora edulis', 'Maracuyá'],
 pitaya:['Hylocereus undatus', 'Pitaya']
 };
-const FOTOS_KEY = 'agrobot_fotos_v1';
+const FOTOS_KEY = 'agrobot_fotos_v2'; // v2: se corrigieron los nombres de busqueda de "paterna" y "arrayan" (mostraban fotos equivocadas), subir version fuerza a recargar fotos frescas
 let fotosCache = {};
 try { fotosCache = JSON.parse(localStorage.getItem(FOTOS_KEY) || '{}'); } catch (e) { fotosCache = {}; }
 function guardarFotos() { try { localStorage.setItem(FOTOS_KEY, JSON.stringify(fotosCache)); } catch (e) {} }
@@ -1879,6 +1904,7 @@ if (u && el.dataset.tipo === tipo) {
 const img = new Image();
 img.alt = PLANT_NAMES[tipo] || tipo;
 img.onload = () => { if (el.dataset.tipo === tipo) { el.innerHTML = ''; el.appendChild(img); } };
+img.onerror = () => { if (el.dataset.tipo === tipo) el.innerHTML = `<span class="foto-emoji">${PLANT_EMOJI[tipo] || '🍎'}</span>`; };
 img.src = u;
 }
 });
@@ -1904,6 +1930,7 @@ function addCoins(n, motivo) {
 if (n <= 0) return;
 setCoins(coins + n);
 if (motivo) showToast(`🪙 +${n} · ${motivo}`);
+spawnFloatingText(drone.px, drone.py - 20, `+${n}🪙`, '#ffd83d');
 }
 function spendCoins(n) {
 if (coins < n) { showToast(`🪙 Te faltan ${n - coins} monedas`, true); return false; }
@@ -1933,7 +1960,7 @@ explicar('depot', `Este es el depósito de agua 💧. Párate aquí y pulsa E pa
 } else if (cell.locked) {
 explicar('locked', `Este lugar tiene un candado 🔒: todavía no hay maceta. Pulsa B para comprarla por ${ECONOMIA.precioMaceta} monedas. En total puedes llegar a ${MAX_PARCELAS} macetas.`);
 } else if (cell.isEmpty) {
-explicar('maceta', `Esta maceta 🪴 está vacía. Pulsa R y te muestro las frutas que faltan; la que elijas cuesta ${ECONOMIA.precioPlanta} monedas. Ninguna fruta se repite en el huerto.`);
+explicar('maceta', `Esta maceta 🪴 está vacía. Pulsa R y te muestro las frutas disponibles; la que elijas cuesta ${ECONOMIA.precioPlanta} monedas. Cuando ya sembraste las 10 del nivel, puedes repetir la que quieras.`);
 } else {
 explicar('planta', `Esta es una planta. La barra de abajo es su salud ❤️: si se pone roja, se está muriendo. Pulsa E para regarla y ganas ${ECONOMIA.porRiego} monedas, o ${ECONOMIA.porRescate} si la salvas a tiempo.`);
 if (cell.health < 2) explicar('peligro', `⚠️ ${PLANT_NAMES[cell.type]} está en peligro. Riégala ya: salvarla te da ${ECONOMIA.porRescate} monedas y suma a tu misión.`);
@@ -2054,10 +2081,12 @@ if (elegidas[i]) sembrarEn(p[0], p[1], elegidas[i], now, true);
 // 3) las demás frutas quedan disponibles para comprar más adelante
 // las frutas NO se mezclan entre niveles: solo se pueden comprar las de este nivel
 semillas = barajar(currentLevelFruits.filter(f => elegidas.indexOf(f) === -1));
+semillasAgotadasAvisado = false;
 farmGrid[0][0] = { type: 'deposito', health: 5, section: 0, isDepot: true, lastWatered: now };
 drone = { x: 0, y: 0, px: 0, py: 0, tx: 0, ty: 0, moving: false,
 bucket: 10, maxBucket: 10, rotorAngle: 0, waterEffect: [],
 blinkLed: 0, hoverOffset: 0 };
+floatingTexts = [];
 score = 0; totalWatered = 0; totalRescues = 0; linesRun = 0;
 gameTimer = 0;
 cmdQueue = []; cmdRunning = false;
@@ -2169,6 +2198,8 @@ p.y += p.vy * dt;
 p.vy += 30 * dt;
 p.life -= dt * 2;
 });
+floatingTexts = floatingTexts.filter(p => p.life > 0);
+floatingTexts.forEach(p => { p.y += p.vy * dt; p.life -= dt * 0.8; });
 }
 
 let lastDecayCheck = Date.now();
@@ -2188,7 +2219,7 @@ const decayAmount = hoursWithoutWater * DECAY_RATE_PER_HOUR * (elapsed / (60 * 6
 cell.health = Math.max(0, cell.health - decayAmount);
 const needs = PLANT_NEEDS[cell.type] || PLANT_NEEDS['vacio'];
 cell.weight = Math.round((cell.health / 5) * needs.peso_max);
-cell.stage = getGrowthStage(cell.health);
+actualizarEtapaCelda(cell);
 }
 }
 }
@@ -2296,7 +2327,7 @@ const plantSize = cellW * 0.5 * (cell.sizeVar || 1);
 ctx.save();
 ctx.translate(px + cellW / 2, py + cellH / 2 + 5);
 ctx.rotate(sway * 0.02);
-drawRealisticPlant(ctx, cell.type, 0, 0, plantSize, cell.health);
+drawRealisticPlant(ctx, cell.type, 0, 0, plantSize, cell.health, cell);
 ctx.restore();
 if (cellW > 30) {
 const barW = cellW - 12;
@@ -2361,6 +2392,17 @@ ctx.fillStyle = wGrad;
 ctx.beginPath();
 ctx.arc(p.x, p.y, radio, 0, Math.PI * 2);
 ctx.fill();
+});
+floatingTexts.forEach(p => {
+ctx.globalAlpha = Math.max(0, Math.min(1, p.life));
+ctx.font = 'bold 13px monospace';
+ctx.textAlign = 'center';
+ctx.textBaseline = 'middle';
+ctx.fillStyle = p.color;
+ctx.shadowColor = p.color;
+ctx.shadowBlur = 6;
+ctx.fillText(p.text, p.x, p.y);
+ctx.shadowBlur = 0;
 });
 ctx.globalAlpha = 1;
 drawRealisticDrone(ctx, drone.px, drone.py, 1, drone.rotorAngle);
@@ -2472,6 +2514,10 @@ window.addEventListener('blur', () => {
 for (const k in KEYS) delete KEYS[k];
 stopContinuousMove();
 });
+// autoguardar si cierran/recargan la pestaña a mitad de una partida
+window.addEventListener('beforeunload', () => {
+if (gameState === 'game') guardarPartidaEnCurso();
+});
 function startContinuousMove(key) {
 stopContinuousMove();
 moveInterval = setInterval(() => {
@@ -2541,7 +2587,7 @@ totalWatered++;
 cell.lastWatered = Date.now();
 const needs = PLANT_NEEDS[cell.type] || PLANT_NEEDS['vacio'];
 cell.weight = Math.round((cell.health / 5) * needs.peso_max);
-cell.stage = getGrowthStage(cell.health);
+actualizarEtapaCelda(cell);
 if (prevHealth < 2) {
 score += 40; totalRescues++;
 addCoins(ECONOMIA.porRescate, `salvaste ${PLANT_NAMES[cell.type]}`);
@@ -2583,13 +2629,12 @@ if (!cell) return false;
 if (cell.isDepot) { showToast('⚠️ Aquí está el depósito de agua', true); return false; }
 if (cell.locked) { showToast(`🔒 Primero compra la maceta: tecla B (${ECONOMIA.precioMaceta} 🪙)`, true); return false; }
 if (!cell.isEmpty) { showToast('⚠️ Esta maceta ya tiene planta', true); return false; }
-if (semillas.length === 0 && !(typeof MUNDO !== 'undefined' && MUNDO.variantes.length)) { showToast('🌱 Ya sembraste las 10 frutas de este nivel. Investiga 🧬 en el laboratorio (tecla I) para desbloquear variantes.', true); return false; }
 if (tipoPedido) {
 const t = String(tipoPedido).toLowerCase();
 const i = semillas.indexOf(t);
-if (i === -1) { showToast(`⚠️ "${tipoPedido}" no está disponible`, true); logConsole(`⚠️ "${tipoPedido}" no existe o ya está sembrada. Usa granja.disponibles()`, 'error'); return false; }
+if (i === -1 && !currentLevelFruits.includes(t)) { showToast(`⚠️ "${tipoPedido}" no está disponible`, true); logConsole(`⚠️ "${tipoPedido}" no existe. Usa granja.disponibles()`, 'error'); return false; }
 if (!spendCoins(ECONOMIA.precioPlanta)) return false;
-semillas.splice(i, 1);
+if (i !== -1) semillas.splice(i, 1);
 plantarConfirmado(t);
 return true;
 }
@@ -2602,6 +2647,10 @@ sembrarEn(drone.x, drone.y, t, Date.now(), true);
 showToast(`🌱 Plantaste ${PLANT_NAMES[t]} (-${ECONOMIA.precioPlanta} 🪙)`);
 logConsole(`🌱 ${PLANT_NAMES[t]} plantada en (${drone.x},${drone.y}). Quedan ${semillas.length} frutas por comprar.`, 'info');
 aidenSpeak(`Plantaste ${PLANT_NAMES[t]}. Riégala pronto o su salud bajará.`);
+if (semillas.length === 0 && !semillasAgotadasAvisado) {
+semillasAgotadasAvisado = true;
+showToast(`🌱 ¡Sembraste las ${currentLevelFruits.length} frutas de este nivel! Ahora puedes repetir la que quieras.`);
+}
 }
 
 // ------------------------------------------------------------
@@ -2613,7 +2662,8 @@ const grid = document.getElementById('picker-grid');
 const info = document.getElementById('picker-info');
 if (!pop || !grid) return;
 grid.innerHTML = '';
-semillas.forEach(f => {
+const lista = semillas.length ? semillas : currentLevelFruits;
+lista.forEach(f => {
 const card = document.createElement('div');
 const puedo = coins >= ECONOMIA.precioPlanta;
 card.className = 'sow-card' + (puedo ? '' : ' sin-monedas');
@@ -2637,14 +2687,18 @@ gamePausedForBio = false;
 
 function elegirPlanta(f) {
 const i = semillas.indexOf(f);
-if (i === -1) { cerrarSelectorPlanta(); return; }
+if (i === -1 && !currentLevelFruits.includes(f)) { cerrarSelectorPlanta(); return; }
 if (coins < ECONOMIA.precioPlanta) { showToast(`🪙 Te faltan ${ECONOMIA.precioPlanta - coins} monedas. Riega para ganar más.`, true); return; }
 spendCoins(ECONOMIA.precioPlanta);
-semillas.splice(i, 1);
+if (i !== -1) semillas.splice(i, 1);
 cerrarSelectorPlanta();
 plantarConfirmado(f);
 }
 
+function spawnFloatingText(x, y, text, color) {
+if (!isFinite(x) || !isFinite(y)) return;
+floatingTexts.push({ x: x, y: y, text: text, color: color || '#ffd83d', vy: -28, life: 1 });
+}
 function spawnWaterEffect(x, y, dir) {
 if (!isFinite(x) || !isFinite(y)) return;
 for (let i = 0; i < 12; i++) {
@@ -2948,7 +3002,7 @@ score += 10; totalWatered++;
 cell.lastWatered = Date.now();
 const needs = PLANT_NEEDS[cell.type];
 cell.weight = Math.round((cell.health / 5) * needs.peso_max);
-cell.stage = getGrowthStage(cell.health);
+actualizarEtapaCelda(cell);
 if (prev < 2) { score += 40; totalRescues++; addCoins(ECONOMIA.porRescate, `salvaste ${PLANT_NAMES[cell.type]}`); }
 else { addCoins(ECONOMIA.porRiego, ''); }
 spawnWaterEffect(drone.px, drone.py, 'down');
@@ -3145,7 +3199,7 @@ return [
 'Teclas: W A S D o flechas para mover, E hace lo que toque, B compra maceta, R compra planta, ESC pausa y tienda.',
 '',
 'REGLAS DEL JUEGO:',
-`El huerto tiene ${MAX_PARCELAS} lugares para macetas y 20 frutas salvadorenas distintas: ninguna se repite nunca.`,
+`El huerto tiene ${MAX_PARCELAS} lugares para macetas y 20 frutas salvadorenas distintas; una vez sembradas las 10 de tu nivel, puedes repetir la que quieras.`,
 `El jugador empieza con solo ${MACETAS_INICIALES} macetas; las otras ${MAX_PARCELAS - MACETAS_INICIALES} estan cerradas y hay que comprarlas.`,
 `Al iniciar sesion se regalan ${ECONOMIA.monedasInicio} monedas. Comprar una maceta cuesta ${ECONOMIA.precioMaceta} y la planta que va dentro cuesta ${ECONOMIA.precioPlanta}.`,
 'Cada planta necesita riego cada hora real; si pasa mas tiempo su salud baja hasta 0 y se pierde.',
@@ -3209,7 +3263,7 @@ if (q.includes('maceta') || q.includes('cuadro') || q.includes('bloque') || q.in
 return `Empiezas con ${MACETAS_INICIALES} macetas de ${MAX_PARCELAS}. Los lugares con 🔒 están cerrados: ponte encima y pulsa B para comprar la maceta por ${ECONOMIA.precioMaceta} monedas. Ahora tienes ${contarMacetas()} macetas y ${coins} 🪙.`;
 }
 if (q.includes('sembrar') || q.includes('siembra') || q.includes('semilla') || q.includes('plantar') || q.includes('planta nueva') || q.includes('comprar')) {
-return `Primero necesitas una maceta (tecla B, ${ECONOMIA.precioMaceta} 🪙). Cuando la maceta esté vacía, pulsa R y elige qué fruta plantar por ${ECONOMIA.precioPlanta} monedas. Te quedan ${semillas.length} frutas distintas por comprar, y ninguna se repite.`;
+return `Primero necesitas una maceta (tecla B, ${ECONOMIA.precioMaceta} 🪙). Cuando la maceta esté vacía, pulsa R y elige qué fruta plantar por ${ECONOMIA.precioPlanta} monedas. Te quedan ${semillas.length} frutas nuevas por comprar; si ya no quedan, puedes repetir cualquiera de las del nivel.`;
 }
 if (q.includes('regar') || q.includes('riego') || q.includes('riega') || q.includes('agua') || q.includes('cubeta')) {
 return 'Ve al depósito en (0,0) y usa drone.recoger_cubeta(). Luego colócate sobre la planta y usa drone.regar() o la tecla E. Cada riego gasta una unidad de agua.';
@@ -3791,7 +3845,7 @@ for (let x = 0; x < GRID_COLS; x++) for (let y = 0; y < GRID_ROWS; y++) {
 const c = farmGrid[x][y];
 if (c && !c.isDepot && !c.isEmpty) {
 c.health = Math.min(5, c.health + 1);
-c.stage = getGrowthStage(c.health);
+actualizarEtapaCelda(c);
 n++;
 }
 }
@@ -3804,6 +3858,7 @@ pintarMonedas();
 function togglePause() {
 if (gameState === 'game') {
 gameState = 'paused';
+guardarPartidaEnCurso();
 document.getElementById('pause-overlay').style.display = 'flex';
 } else if (gameState === 'paused') {
 resumeGame();
@@ -3838,6 +3893,8 @@ initMenuCanvas();
 //  PANTALLA DE SIEMBRA: el jugador elige qué frutos quiere
 // ============================================================
 function openSowScreen(level) {
+if (hayPartidaGuardada() && !confirm('Tienes una partida guardada. Si empiezas una nueva, se perderá. ¿Empezar de todos modos?')) return;
+borrarPartidaGuardada();
 currentLevel = level;
 gameState = 'sow';
 seleccionSiembra = (level === 1 ? LEVEL1_FRUITS : LEVEL2_FRUITS).slice(0, MACETAS_INICIALES);
@@ -3930,6 +3987,92 @@ showToast(`🎁 ¡Te regalamos ${bono} monedas!`);
 logConsole(`🎁 Regalo de bienvenida: ${bono} 🪙. Sirven para comprar macetas (${ECONOMIA.precioMaceta}) y plantas (${ECONOMIA.precioPlanta}). Total: ${coins} 🪙`, 'info');
 }
 syncDronePosition();
+lastTime = performance.now();
+requestAnimationFrame(farmLoop);
+}
+
+// ============================================================
+//  GUARDAR / CONTINUAR PARTIDA (autoguardado, una sola ranura)
+// ============================================================
+function guardarPartidaEnCurso() {
+if (gameState !== 'game' && gameState !== 'paused') return;
+try {
+const snap = {
+version: 1,
+savedAt: Date.now(),
+level: currentLevel,
+seleccionSiembra: seleccionSiembra,
+semillas: semillas,
+semillasAgotadasAvisado: semillasAgotadasAvisado,
+farmGrid: farmGrid,
+coins: coins,
+score: score, totalWatered: totalWatered, totalRescues: totalRescues, linesRun: linesRun,
+gameTimer: gameTimer,
+drone: { x: drone.x, y: drone.y, bucket: drone.bucket, maxBucket: drone.maxBucket },
+MUNDO: Object.assign({}, MUNDO, { puzzleActivo: null })
+};
+localStorage.setItem(PARTIDA_KEY, JSON.stringify(snap));
+} catch (e) { /* localStorage lleno o deshabilitado: sin autoguardado, no rompe el juego */ }
+}
+
+function hayPartidaGuardada() {
+try {
+const d = JSON.parse(localStorage.getItem(PARTIDA_KEY) || 'null');
+return !!(d && d.version === 1 && d.farmGrid);
+} catch (e) { return false; }
+}
+
+function borrarPartidaGuardada() {
+try { localStorage.removeItem(PARTIDA_KEY); } catch (e) {}
+}
+
+// OJO: no llamar esto "resumeGame" - ese nombre ya existe y significa "despausar".
+function continuarPartida() {
+let snap;
+try { snap = JSON.parse(localStorage.getItem(PARTIDA_KEY)); } catch (e) { snap = null; }
+if (!snap || !snap.farmGrid) { showToast('⚠️ No se pudo cargar la partida guardada', true); borrarPartidaGuardada(); return; }
+currentLevel = snap.level;
+currentLevelFruits = currentLevel === 1 ? LEVEL1_FRUITS : LEVEL2_FRUITS;
+gameState = 'game';
+document.getElementById('main-menu').style.display = 'none';
+document.getElementById('sow-screen').classList.remove('visible');
+document.getElementById('game-screen').style.display = 'block';
+cancelAnimationFrame(menuAnimFrame);
+seleccionSiembra = snap.seleccionSiembra || [];
+semillas = snap.semillas || [];
+semillasAgotadasAvisado = !!snap.semillasAgotadasAvisado;
+farmGrid = snap.farmGrid;
+coins = snap.coins || 0;
+score = snap.score || 0;
+totalWatered = snap.totalWatered || 0;
+totalRescues = snap.totalRescues || 0;
+linesRun = snap.linesRun || 0;
+gameTimer = snap.gameTimer || 0;
+drone = { x: snap.drone.x, y: snap.drone.y, px: 0, py: 0, tx: 0, ty: 0, moving: false,
+bucket: snap.drone.bucket, maxBucket: snap.drone.maxBucket, rotorAngle: 0, waterEffect: [],
+blinkLed: 0, hoverOffset: 0 };
+floatingTexts = [];
+cmdQueue = []; cmdRunning = false;
+gamePausedForBio = false;
+Object.assign(MUNDO, snap.MUNDO);
+MUNDO.puzzleActivo = null;
+initFarmCanvas();
+initConsole();
+aidenHistory = [];
+explicado = {};
+initAidenTopics();
+cargarHistorial();
+initQuickCmds();
+listarVoces();
+actualizarBotonVoz();
+precargarFotos(seleccionSiembra);
+if (!currentUser || currentUser.micro !== false) iniciarMicrofono(true);
+else pintarMic('off', 'Micrófono apagado');
+setCoins(coins);
+mxPintarHUD();
+syncDronePosition();
+showToast('▶ Continuando tu partida anterior');
+logConsole('▶ Partida anterior restaurada.', 'info');
 lastTime = performance.now();
 requestAnimationFrame(farmLoop);
 }
@@ -4048,19 +4191,19 @@ initManualGrids();
 //  sus reglas, solo le agrega capas nuevas.
 // ============================================================
 const MX_ZONAS = [
-{id:'ciudad', nombre:'Ciudad Abandonada', emoji:'🏚️', energia:4, seg:22, riesgo:0.30,
+{id:'ciudad', nombre:'Ciudad Abandonada', emoji:'🏚️', energia:4, seg:22, riesgo:0.30, color:'coral',
  desc:'Torres vacías y calles con chatarra. Alguien vivió aquí hace mucho.',
  loot:{piezas:[2,5], alimento:[0,2], monedas:[4,10]}},
-{id:'desierto', nombre:'Desierto de Sal', emoji:'🏜️', energia:5, seg:26, riesgo:0.40,
+{id:'desierto', nombre:'Desierto de Sal', emoji:'🏜️', energia:5, seg:26, riesgo:0.40, color:'gold',
  desc:'Antes fue un lago. Hoy solo queda sal, viento y silencio.',
  loot:{piezas:[1,3], agua:[0,3], monedas:[6,14]}},
-{id:'bosque', nombre:'Bosque Seco', emoji:'🌲', energia:3, seg:18, riesgo:0.20,
+{id:'bosque', nombre:'Bosque Seco', emoji:'🌲', energia:3, seg:18, riesgo:0.20, color:'emerald',
  desc:'Árboles sin hojas. Bajo la tierra todavía hay semillas vivas.',
  loot:{alimento:[2,5], agua:[1,3], monedas:[3,8]}},
-{id:'fabrica', nombre:'Fábrica Oxidada', emoji:'🏭', energia:6, seg:30, riesgo:0.50,
+{id:'fabrica', nombre:'Fábrica Oxidada', emoji:'🏭', energia:6, seg:30, riesgo:0.50, color:'orange',
  desc:'Máquinas dormidas. Es el mejor lugar para conseguir repuestos.',
  loot:{piezas:[4,9], energia:[2,5], monedas:[5,12]}},
-{id:'estacion', nombre:'Estación de Agua', emoji:'🚰', energia:5, seg:28, riesgo:0.35,
+{id:'estacion', nombre:'Estación de Agua', emoji:'🚰', energia:5, seg:28, riesgo:0.35, color:'teal',
  desc:'La vieja planta potabilizadora. Sus tuberías guardan reservas.',
  loot:{agua:[3,8], piezas:[1,4], monedas:[4,9]}}
 ];
@@ -4105,13 +4248,13 @@ const MX_INVESTIGACIONES = [
 ];
 
 const MX_COMUNIDADES = [
-{id:'rioseco', nombre:'Río Seco', emoji:'🏘️', necesita:'agua', da:'alimento',
+{id:'rioseco', nombre:'Río Seco', emoji:'🏘️', necesita:'agua', da:'alimento', color:'cyan',
  desc:'Pozo agotado. Cambian comida por agua limpia.'},
-{id:'valle', nombre:'Valle Nuevo', emoji:'🌾', necesita:'alimento', da:'piezas',
+{id:'valle', nombre:'Valle Nuevo', emoji:'🌾', necesita:'alimento', da:'piezas', color:'emerald',
  desc:'Sus cultivos murieron. Tienen un taller lleno de repuestos.'},
-{id:'chatarra', nombre:'Ciudad Chatarra', emoji:'⚙️', necesita:'piezas', da:'energia',
+{id:'chatarra', nombre:'Ciudad Chatarra', emoji:'⚙️', necesita:'piezas', da:'energia', color:'orange',
  desc:'Reparan de todo, pero se quedaron sin repuestos buenos.'},
-{id:'faro', nombre:'Faro Solar', emoji:'🔆', necesita:'energia', da:'agua',
+{id:'faro', nombre:'Faro Solar', emoji:'🔆', necesita:'energia', da:'agua', color:'gold',
  desc:'Sus paneles se quemaron. A cambio comparten su reserva de agua.'}
 ];
 
@@ -4152,6 +4295,7 @@ function mxDar(k, n){
 if (k === 'monedas') { addCoins(n, ''); return; }
 MUNDO.recursos[k] = Math.max(0, (MUNDO.recursos[k] || 0) + n);
 if (k === 'energia') MUNDO.recursos.energia = Math.min(MUNDO.recursos.energia, MUNDO.topeEnergia);
+if (n > 0) spawnFloatingText(drone.px, drone.py - 20, `+${n}${mxIcono(k)}`, '#5ce1ff');
 mxPintarHUD();
 }
 function mxPuede(costo){
@@ -4207,6 +4351,8 @@ const pop = document.getElementById('mx-popup');
 if (!pop) return;
 document.getElementById('mx-title').textContent = titulo;
 document.getElementById('mx-body').innerHTML = html;
+const box = pop.querySelector('.mx-box');
+if (box) box.className = 'mx-box' + (MUNDO.pantalla ? ' tema-' + MUNDO.pantalla : '');
 pop.classList.add('visible');
 gamePausedForBio = true;
 }
@@ -4281,7 +4427,7 @@ if (st.explorado >= 100 && !MUNDO.acuiferoHallado)
 extra = `<button class="mx-btn gold" style="margin-top:6px" onclick="MX.perforar('${z.id}')">⛏️ Perforar aquí (5 ⚡ · 3 🔩)</button>`;
 const marca = (mxNivel(MUNDO.mejoras, 'sensores') >= 3 && !MUNDO.acuiferoHallado && z.id === MUNDO.acuifero)
 ? ' <span class="mx-tag on">📡 humedad detectada</span>' : '';
-h += `<div class="mx-card">
+h += `<div class="mx-card" style="--acc:var(--${z.color})">
 <div class="mx-ico">${z.emoji}</div>
 <div class="mx-info">
 <div class="mx-name">${z.nombre} <span class="mx-tag ${st.explorado>=100?'on':''}">${Math.floor(st.explorado)}% explorado</span>${marca}</div>
@@ -4440,11 +4586,15 @@ MX_EDIFICIOS.forEach(ed => {
 const n = mxNivel(MUNDO.edificios, ed.id);
 const costo = mxCostoNivel(ed.costo, n);
 const lleno = n >= ed.max;
+let barraProduccion = '';
+if (n > 0 && ed.id === 'solar') barraProduccion = `<div class="mx-bar"><div class="mx-fill" id="mx-solar-fill" style="width:${Math.min(100, (mxSolarT / 20) * 100)}%"></div></div>`;
+if (n > 0 && ed.id === 'purificador') barraProduccion = `<div class="mx-bar"><div class="mx-fill" id="mx-agua-fill" style="width:${Math.min(100, (mxAguaT / 25) * 100)}%"></div></div>`;
 h += `<div class="mx-card ${lleno ? 'off' : ''}">
 <div class="mx-ico">${ed.emoji}</div>
 <div class="mx-info">
 <div class="mx-name">${ed.nombre} <span class="mx-tag ${n?'on':''}">Nivel ${n}/${ed.max}</span></div>
 <div class="mx-desc">${ed.desc}</div>
+${barraProduccion}
 </div>
 <div>${lleno ? '<button class="mx-btn" disabled>MÁX</button>'
 : `<button class="mx-btn" onclick="MX.construir('${ed.id}')">${mxCostoTxt(costo)}</button>`}</div>
@@ -4541,14 +4691,15 @@ let h = `<div class="mx-sub">Cada comunidad necesita algo distinto. Ayúdalas y 
 if (MUNDO.emergencia) {
 const e = MUNDO.emergencia;
 const c = MX_COMUNIDADES.find(x => x.id === e.com);
-h += `<div class="mx-hint">🚨 EMERGENCIA: ${c.nombre} necesita <b>${e.cantidad} ${mxIcono(e.recurso)}</b>
+if (!c) { MUNDO.emergencia = null; mxAlerta(null); }
+else h += `<div class="mx-hint">🚨 EMERGENCIA: ${c.nombre} necesita <b>${e.cantidad} ${mxIcono(e.recurso)}</b>
 en ${Math.ceil(e.restante)}s. Tienes ${Math.floor(mxRec(e.recurso))}.
 <br><button class="mx-btn rojo" style="margin-top:7px" onclick="MX.entregarEmergencia()">🚑 Entregar ahora</button></div>`;
 }
 MX_COMUNIDADES.forEach(c => {
 const st = mxComEstado(c.id);
 const precio = mxPrecioTrueque();
-h += `<div class="mx-card">
+h += `<div class="mx-card" style="--acc:var(--${c.color})">
 <div class="mx-ico">${c.emoji}</div>
 <div class="mx-info">
 <div class="mx-name">${c.nombre} <span class="mx-tag ${st.ayudas?'on':''}">${st.ayudas} ayudas</span></div>
@@ -4867,6 +5018,7 @@ MX.decidir = function(op){
 const e = MUNDO.emergencia;
 if (!e) { mxCerrar(); return; }
 const c = MX_COMUNIDADES.find(x => x.id === e.com);
+if (!c) { MUNDO.emergencia = null; mxAlerta(null); mxCerrar(); return; }
 if (op === 'ayudar') {
 if (mxRec('agua') >= e.cantidad) { mxDar('agua', -e.cantidad); mxCumplirEmergencia(true); }
 else { showToast('💧 No te alcanza el agua de la reserva', true); }
@@ -4894,7 +5046,7 @@ const c = farmGrid[x] && farmGrid[x][y];
 if (c && !c.isDepot && !c.isEmpty && c.health < 2) {
 c.health = Math.min(5, c.health + cuanto);
 c.lastWatered = Date.now();
-c.stage = getGrowthStage(c.health);
+actualizarEtapaCelda(c);
 }
 }
 }
@@ -4910,9 +5062,10 @@ function mxCumplirEmergencia(exito){
 const e = MUNDO.emergencia;
 if (!e) return;
 const c = MX_COMUNIDADES.find(x => x.id === e.com);
-const st = mxComEstado(c.id);
 MUNDO.emergencia = null;
 mxAlerta(null);
+if (!c) return;
+const st = mxComEstado(c.id);
 if (exito) {
 st.ayudas++;
 MUNDO.entregas++;
@@ -4977,6 +5130,7 @@ else if (drone.y !== y) moveDrone(0, drone.y < y ? 1 : -1);
 function mxCiclo(){
 mxPintarHUD();
 if (gameState !== 'game' || !MUNDO.iniciado) return;
+try {
 const dt = 0.5;
 MUNDO.tActivo += dt;
 mxTick++;
@@ -5001,6 +5155,10 @@ if (solar > 0 && mxSolarT >= 20) { mxSolarT = 0; mxDar('energia', solar); }
 mxAguaT += dt;
 const pur = mxNivel(MUNDO.edificios, 'purificador');
 if (pur > 0 && mxAguaT >= 25) { mxAguaT = 0; mxDar('agua', pur * (MUNDO.acuiferoHallado ? 2 : 1)); }
+if (MUNDO.pantalla === 'base') {
+const sf = document.getElementById('mx-solar-fill'); if (sf) sf.style.width = Math.min(100, (mxSolarT / 20) * 100) + '%';
+const af = document.getElementById('mx-agua-fill'); if (af) af.style.width = Math.min(100, (mxAguaT / 25) * 100) + '%';
+}
 
 // --- evento activo ---
 if (MUNDO.evento && MUNDO.evento.total > 0) {
@@ -5014,12 +5172,15 @@ if (MUNDO.emergencia) {
 MUNDO.emergencia.restante -= dt;
 if (!MUNDO.evento) {
 const c = MX_COMUNIDADES.find(x => x.id === MUNDO.emergencia.com);
+if (!c) { MUNDO.emergencia = null; mxAlerta(null); }
+else {
 mxAlerta(`🚨 ${c.nombre} pide ayuda`,
 `${MUNDO.emergencia.cantidad} ${mxIcono(MUNDO.emergencia.recurso)} · quedan ${Math.ceil(MUNDO.emergencia.restante)}s · abre 🤝`);
 const f = document.getElementById('mx-al-fill');
 if (f) f.style.width = Math.max(0, (MUNDO.emergencia.restante / MUNDO.emergencia.total) * 100) + '%';
 }
-if (MUNDO.emergencia.restante <= 0) mxCumplirEmergencia(false);
+}
+if (MUNDO.emergencia && MUNDO.emergencia.restante <= 0) mxCumplirEmergencia(false);
 }
 // --- avería o apagón pendientes: el aviso se queda hasta resolverlo ---
 if ((MUNDO.dronAveriado || MUNDO.apagon) && !MUNDO.emergencia && !(MUNDO.evento && MUNDO.evento.total > 0)) {
@@ -5040,6 +5201,9 @@ MUNDO.ultimaEmergencia = MUNDO.tActivo; mxLanzarEmergencia();
 }
 // --- estado del planeta y final por fracaso ---
 if (mxTick % 20 === 0) { mxRevisarLogros(); mxRevisarFracaso(); }
+// --- autoguardado cada ~30s (60 ticks de 500ms) ---
+if (mxTick % 60 === 0) guardarPartidaEnCurso();
+} catch (e) { console.error('mxCiclo: fallo inesperado', e); }
 }
 function mxEfectosSalud(){
 const b = mxBonos();
@@ -5059,7 +5223,7 @@ if (b.castigoEco > 0 && c.health > 0) c.health = Math.max(0, c.health - b.castig
 const proteccion = b.proteccion + (c.experimental ? 0.35 : 0);
 if (proteccion > 0 && c.health > 0 && c.health < 5) c.health = Math.min(5, c.health + 0.06 * proteccion);
 if (antes !== c.health) {
-c.stage = getGrowthStage(c.health);
+actualizarEtapaCelda(c);
 const needs = PLANT_NEEDS[c.type];
 if (needs) c.weight = Math.round((c.health / 5) * needs.peso_max);
 }
@@ -5239,6 +5403,7 @@ MUNDO.terminada = true;
 const f = MX_FINALES[tipo];
 const minutos = Math.max(1, Math.round(gameTimer / 60));
 mxGuardarRanking(tipo, minutos);
+borrarPartidaGuardada();
 const h = `<div class="mx-final">
 <div class="mx-em">${f.emoji}</div>
 <h2 style="color:${f.color}">${f.titulo}</h2>
@@ -6822,7 +6987,7 @@ function construirEscenasV14() {
   // --- El huerto: qué vas a hacer ---
   escenaNueva('cin-scene-6',
     '<div class="cin-titulo">TU HUERTO Y TU DRON</div>' +
-    '<div class="cin-sub">20 macetas · 20 frutas salvadoreñas · ninguna se repite</div>' +
+    '<div class="cin-sub">20 macetas · 20 frutas salvadoreñas · siémbralas todas</div>' +
     '<div class="cin-huerto">' +
       '<div class="cin-maceta">🥭</div><div class="cin-maceta">🥥</div>' +
       '<div class="cin-maceta">🍈</div><div class="cin-maceta cerrada">🔒</div>' +
@@ -7408,7 +7573,7 @@ setInterval(function () {
   c.lastWatered = Date.now();
   const needs = PLANT_NEEDS[c.type] || PLANT_NEEDS['vacio'];
   c.weight = Math.round((c.health / 5) * needs.peso_max);
-  c.stage = getGrowthStage(c.health);
+  actualizarEtapaCelda(c);
   try { logConsole('🤖 Tu ayudante regó ' + PLANT_NAMES[c.type] + ' en (' + peor[0] + ',' + peor[1] + ').', 'info'); } catch (e) {}
 }, 2000);
 
@@ -8140,7 +8305,7 @@ construirEscenasV14 = function () {
   escenaV16('cin-scene-7',
     '<div class="cin-big">20 FRUTAS DE AQUÍ</div>' +
     '<div class="cin-galeria" id="cin-galeria"></div>' +
-    '<div class="cin-linea">Jocote, mamey, pitaya… <b>ninguna se repite</b>.</div>');
+    '<div class="cin-linea">Jocote, mamey, pitaya… <b>siémbralas todas</b>.</div>');
 
   // 5 · programar
   escenaV16('cin-scene-8',
